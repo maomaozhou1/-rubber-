@@ -139,10 +139,14 @@ export const ViscoelasticScene = ({
 }) => {
   // Clamp visual strain to prevent piston from pulling out of cylinder
   const MAX_STRAIN = 2.2;
-  let vStrain = strain;
-  let vViscous = viscousStrain;
-  let vViscous2 = viscousStrain2;
-  let vElastic = elasticStrain;
+  
+  // Safety check for inputs
+  const safe = (val: number, fallback = 0) => (Number.isFinite(val) && !isNaN(val)) ? val : fallback;
+  
+  let vStrain = safe(strain);
+  let vViscous = safe(viscousStrain);
+  let vViscous2 = safe(viscousStrain2);
+  let vElastic = safe(elasticStrain);
   
   if (mechanicalModel === 'maxwell') {
     if (vViscous > MAX_STRAIN) vViscous = MAX_STRAIN;
@@ -150,14 +154,14 @@ export const ViscoelasticScene = ({
   } else if (mechanicalModel === 'kelvin') {
     if (vStrain > MAX_STRAIN) vStrain = MAX_STRAIN;
   } else if (mechanicalModel === 'sls_maxwell' || mechanicalModel === 'sls_kelvin') {
-    if (vStrain > MAX_STRAIN) {
+    if (vStrain > MAX_STRAIN && vStrain !== 0) {
       const ratio = MAX_STRAIN / vStrain;
       vStrain = MAX_STRAIN;
       vViscous *= ratio;
       vElastic *= ratio;
     }
   } else if (mechanicalModel === 'generalized_maxwell') {
-    if (vStrain > MAX_STRAIN) {
+    if (vStrain > MAX_STRAIN && vStrain !== 0) {
       const ratio = MAX_STRAIN / vStrain;
       vStrain = MAX_STRAIN;
       vViscous *= ratio;
@@ -165,7 +169,7 @@ export const ViscoelasticScene = ({
       vElastic *= ratio;
     }
   }
-  const isClamped = strain > MAX_STRAIN || viscousStrain > MAX_STRAIN || elasticStrain > MAX_STRAIN || viscousStrain2 > MAX_STRAIN;
+  const isClamped = (safe(strain) > MAX_STRAIN) || (safe(viscousStrain) > MAX_STRAIN) || (safe(elasticStrain) > MAX_STRAIN) || (safe(viscousStrain2) > MAX_STRAIN);
 
   return (
     <Canvas shadows className="w-full h-full bg-neutral-900">

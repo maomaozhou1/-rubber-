@@ -96,11 +96,22 @@ export default function App() {
         let newViscousStrain = s.currentViscousStrain;
         let newViscousStrain2 = s.currentViscousStrain2;
 
+        // Safety check: ensure all inputs are finite numbers
+        const safe = (val: number, fallback = 0) => Number.isFinite(val) ? val : fallback;
+        
+        const E1_safe = safe(modulus, 1.0);
+        const E2_safe = safe(modulus2, 1.0);
+        const E3_safe = safe(modulus3, 1.0);
+        const eta1_safe = safe(viscosity, 2.0);
+        const eta2_safe = safe(viscosity2, 5.0);
+        const sigma0_safe = safe(appliedStress, 0);
+        const epsilon0_safe = safe(appliedStrain, 0);
+
         if (testMode === 'creep') {
-          newStress = appliedStress;
+          newStress = sigma0_safe;
           if (s.time === 0) {
             if (mechModel === 'maxwell') {
-              newStrain = appliedStress / modulus;
+              newStrain = sigma0_safe / E1_safe;
               newElasticStrain = newStrain;
               newViscousStrain = 0;
             } else if (mechModel === 'kelvin') {
@@ -108,63 +119,51 @@ export default function App() {
               newElasticStrain = 0;
               newViscousStrain = 0;
             } else if (mechModel === 'sls_maxwell') {
-              newStrain = appliedStress / modulus;
+              newStrain = sigma0_safe / E1_safe;
               newElasticStrain = newStrain;
               newViscousStrain = 0;
             } else if (mechModel === 'sls_kelvin') {
-              newStrain = appliedStress / modulus;
+              newStrain = sigma0_safe / E1_safe;
               newElasticStrain = newStrain;
               newViscousStrain = 0;
             } else if (mechModel === 'generalized_maxwell') {
-              newStrain = appliedStress / (modulus + modulus2 + modulus3);
+              newStrain = sigma0_safe / (E1_safe + E2_safe + E3_safe);
               newElasticStrain = newStrain;
               newViscousStrain = 0;
               newViscousStrain2 = 0;
             }
           } else {
             if (mechModel === 'maxwell') {
-              newElasticStrain = appliedStress / modulus;
-              newViscousStrain = s.currentViscousStrain + (appliedStress / viscosity) * dt;
+              newElasticStrain = sigma0_safe / E1_safe;
+              newViscousStrain = s.currentViscousStrain + (sigma0_safe / eta1_safe) * dt;
               newStrain = newElasticStrain + newViscousStrain;
             } else if (mechModel === 'kelvin') {
-              newStrain = (appliedStress / modulus) * (1 - Math.exp(-modulus * nextTime / viscosity));
+              newStrain = (sigma0_safe / E1_safe) * (1 - Math.exp(-E1_safe * nextTime / eta1_safe));
               newElasticStrain = newStrain;
               newViscousStrain = newStrain;
             } else if (mechModel === 'sls_maxwell') {
-              const e1 = modulus;
-              const e2 = modulus2;
-              const eta = viscosity;
-              newStrain = (appliedStress / e1) + (appliedStress / e2) * (1 - Math.exp(-e2 * nextTime / eta));
-              newElasticStrain = appliedStress / e1;
+              newStrain = (sigma0_safe / E1_safe) + (sigma0_safe / E2_safe) * (1 - Math.exp(-E2_safe * nextTime / eta1_safe));
+              newElasticStrain = sigma0_safe / E1_safe;
               newViscousStrain = newStrain - newElasticStrain;
             } else if (mechModel === 'sls_kelvin') {
-              const e1 = modulus;
-              const e2 = modulus2;
-              const eta = viscosity;
-              newElasticStrain = appliedStress / e1;
-              newViscousStrain = (appliedStress / e2) * (1 - Math.exp(-e2 * nextTime / eta));
+              newElasticStrain = sigma0_safe / E1_safe;
+              newViscousStrain = (sigma0_safe / E2_safe) * (1 - Math.exp(-E2_safe * nextTime / eta1_safe));
               newStrain = newElasticStrain + newViscousStrain;
             } else if (mechModel === 'generalized_maxwell') {
-              const E0 = modulus;
-              const E1 = modulus2;
-              const E2 = modulus3;
-              const eta1 = viscosity;
-              const eta2 = viscosity2;
+              const sigma1 = E2_safe * (s.currentStrain - s.currentViscousStrain);
+              const sigma2 = E3_safe * (s.currentStrain - s.currentViscousStrain2);
               
-              const sigma1 = E1 * (s.currentStrain - s.currentViscousStrain);
-              const sigma2 = E2 * (s.currentStrain - s.currentViscousStrain2);
-              
-              const dStrain = ( (E1 / eta1) * sigma1 + (E2 / eta2) * sigma2 ) / (E0 + E1 + E2);
+              const dStrain = ( (E2_safe / eta1_safe) * sigma1 + (E3_safe / eta2_safe) * sigma2 ) / (E1_safe + E2_safe + E3_safe);
               newStrain = s.currentStrain + dStrain * dt;
               
-              newViscousStrain = s.currentViscousStrain + (sigma1 / eta1) * dt;
-              newViscousStrain2 = s.currentViscousStrain2 + (sigma2 / eta2) * dt;
+              newViscousStrain = s.currentViscousStrain + (sigma1 / eta1_safe) * dt;
+              newViscousStrain2 = s.currentViscousStrain2 + (sigma2 / eta2_safe) * dt;
               newElasticStrain = newStrain;
             }
           }
         } else {
           // Relaxation Mode
-          newStrain = appliedStrain;
+          newStrain = epsilon0_safe;
           if (s.time === 0) {
              if (mechModel === 'generalized_maxwell') {
                newViscousStrain2 = 0;
@@ -172,46 +171,42 @@ export default function App() {
              }
           }
           if (mechModel === 'maxwell') {
-            newStress = (modulus * appliedStrain) * Math.exp(-modulus * nextTime / viscosity);
-            newElasticStrain = newStress / modulus;
-            newViscousStrain = appliedStrain - newElasticStrain;
+            newStress = (E1_safe * epsilon0_safe) * Math.exp(-E1_safe * nextTime / eta1_safe);
+            newElasticStrain = newStress / E1_safe;
+            newViscousStrain = epsilon0_safe - newElasticStrain;
           } else if (mechModel === 'kelvin') {
-            newStress = modulus * appliedStrain;
-            newElasticStrain = appliedStrain;
-            newViscousStrain = appliedStrain;
+            newStress = E1_safe * epsilon0_safe;
+            newElasticStrain = epsilon0_safe;
+            newViscousStrain = epsilon0_safe;
           } else if (mechModel === 'sls_maxwell') {
-            const e1 = modulus;
-            const e2 = modulus2;
-            const eta = viscosity;
-            newStress = appliedStrain * (e1 + e2 * Math.exp(-e2 * nextTime / eta));
-            newElasticStrain = appliedStrain; 
-            newViscousStrain = appliedStrain * (1 - Math.exp(-e2 * nextTime / eta));
+            newStress = epsilon0_safe * (E1_safe + E2_safe * Math.exp(-E2_safe * nextTime / eta1_safe));
+            newElasticStrain = epsilon0_safe; 
+            newViscousStrain = epsilon0_safe * (1 - Math.exp(-E2_safe * nextTime / eta1_safe));
           } else if (mechModel === 'sls_kelvin') {
-            const e1 = modulus;
-            const e2 = modulus2;
-            const eta = viscosity;
-            const E_inf = (e1 * e2) / (e1 + e2);
-            const E_trans = (e1 * e1) / (e1 + e2);
-            const tau = eta / (e1 + e2);
-            newStress = appliedStrain * (E_inf + E_trans * Math.exp(-nextTime / tau));
-            newElasticStrain = newStress / e1;
-            newViscousStrain = appliedStrain - newElasticStrain;
+            const E_inf = (E1_safe * E2_safe) / (E1_safe + E2_safe);
+            const E_trans = (E1_safe * E1_safe) / (E1_safe + E2_safe);
+            const tau = eta1_safe / (E1_safe + E2_safe);
+            newStress = epsilon0_safe * (E_inf + E_trans * Math.exp(-nextTime / tau));
+            newElasticStrain = newStress / E1_safe;
+            newViscousStrain = epsilon0_safe - newElasticStrain;
           } else if (mechModel === 'generalized_maxwell') {
-            const E0 = modulus;
-            const E1 = modulus2;
-            const E2 = modulus3;
-            const eta1 = viscosity;
-            const eta2 = viscosity2;
+            const sigma1 = epsilon0_safe * E2_safe * Math.exp(-E2_safe * nextTime / eta1_safe);
+            const sigma2 = epsilon0_safe * E3_safe * Math.exp(-E3_safe * nextTime / eta2_safe);
+            newStress = epsilon0_safe * E1_safe + sigma1 + sigma2;
             
-            const sigma1 = appliedStrain * E1 * Math.exp(-E1 * nextTime / eta1);
-            const sigma2 = appliedStrain * E2 * Math.exp(-E2 * nextTime / eta2);
-            newStress = appliedStrain * E0 + sigma1 + sigma2;
-            
-            newViscousStrain = appliedStrain - sigma1 / E1;
-            newViscousStrain2 = appliedStrain - sigma2 / E2;
-            newElasticStrain = appliedStrain;
+            newViscousStrain = epsilon0_safe - sigma1 / E2_safe;
+            newViscousStrain2 = epsilon0_safe - sigma2 / E3_safe;
+            newElasticStrain = epsilon0_safe;
           }
         }
+        
+        // Final safety check before state update
+        newStrain = safe(newStrain);
+        newStress = safe(newStress);
+        newElasticStrain = safe(newElasticStrain);
+        newViscousStrain = safe(newViscousStrain);
+        newViscousStrain2 = safe(newViscousStrain2);
+
         
         setTime(nextTime);
         setCurrentStrain(newStrain);
